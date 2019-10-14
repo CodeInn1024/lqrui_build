@@ -14,15 +14,17 @@ function lqrui_build() {
 		this.info.pass = info.password
 		const a = info.gitUrl.split('/')
 		this.info.name = a[a.length - 1].split('.')[0]
+		this.pathStr = info.original ? '' : path.resolve('./A/', this.info.name)
+		this.compressName = `dist-${info.branch}-${info.env}.zip`
 		this.sshClient = new simpleSsh(this.info)
 	};
 	// 执行命令
 	this.exec = (command, pathStr = '') => {
 		return new Promise((res, rej) => {
 			console.log(`++++++++++执行命令:${command}`)
-			console.log(`++++++++++路径:${path.resolve('./A/', pathStr)}`)
+			console.log(`++++++++++路径:${this.pathStr}`)
 			const ls = childProcess.exec(command, {
-				cwd: path.resolve('./A/', pathStr),
+				cwd: pathStr,
 				encoding: 'utf8',
 				timeout: 0,
 				maxBuffer: 5000 * 1024,
@@ -41,13 +43,15 @@ function lqrui_build() {
 	// 拉取代码
 	this.gitClone = () => {
 		return new Promise((res) => {
+			if (this.info.original) res(this.exec(`git pull`))
 			fs.stat(`./A/${this.info.name}`, (err, stats) => {
 				if (err) {
 					console.log('++++++++++拉取代码')
-					res(this.exec(`git clone -b ${this.info.branch} ${this.info.gitUrl}`))
+					res(this.exec(`git clone -b ${this.info.branch} ${this.info.gitUrl}`, './A/'))
 				} else {
 					console.log('++++++++++更新代码')
-					res(this.exec(`git pull`, this.info.name))
+					// this.exec(`git checkout ${this.info.branch}`)
+					res(this.exec(`git pull`))
 				}
 			})
 		})
@@ -56,18 +60,18 @@ function lqrui_build() {
 	this.install = (type = 'npm') => {
 		console.log('++++++++++安装依赖')
 		// return this.exec(`${process.platform === 'win32' ? 'npm.cmd' : 'npm'} i --registry https://registry.npm.taobao.org`,	this.info.name)
-		return this.exec(`${process.platform === 'win32' ? 'npm.cmd' : 'npm'} i`, this.info.name)
+		return this.exec(`${process.platform === 'win32' ? 'npm.cmd' : 'npm'} i`, this.pathStr)
 	};
 	// 构建
 	this.build = (type = 'npm') => {
 		console.log('++++++++++构建')
-		return this.exec(`${process.platform === 'win32' ? 'npm.cmd' : 'npm'} run build`, this.info.name)
+		return this.exec(`${process.platform === 'win32' ? 'npm.cmd' : 'npm'} run build`, this.pathStr)
 	};
 	// 压缩
 	this.compressing = () => {
 		console.log('++++++++++压缩')
 		return new Promise((resolve, reject) => {
-			compressing.zip.compressDir(`./A/${this.info.name}/dist/.`, `./A/${this.info.name}/dist.zip`)
+			compressing.zip.compressDir(`./A/${this.info.name}/dist/.`, `./A/${this.info.name}/${this.info.compressName}`)
 				.then(() => {
 					console.log('compressing:success');
 					resolve('success')
@@ -83,7 +87,7 @@ function lqrui_build() {
 		console.log('++++++++++ssh上传')
 		return new Promise((resolve, reject) => {
 			console.log(this.info)
-			scp2.scp(`./A/${this.info.name}/dist.zip`, this.info, function(err) {
+			scp2.scp(`./A/${this.info.name}/${this.info.compressName}`, this.info, function(err) {
 				if (err) {
 					console.error(err);
 					reject(err);
@@ -99,7 +103,7 @@ function lqrui_build() {
 		console.log('++++++++++解压')
 		return new Promise((resolve, reject) => {
 			this.sshClient
-				.exec(`unzip -d ${this.info.path} ${this.info.path}/dist.zip`, {
+				.exec(`unzip -d ${this.info.path} ${this.info.path}/${this.info.compressName}`, {
 					out: (stdout) => console.log(stdout),
 					exit: () => {
 						resolve();
